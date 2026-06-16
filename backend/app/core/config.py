@@ -6,6 +6,8 @@ Sensitive fields (API keys) are never echoed in logs — reference by name only.
 """
 
 from functools import lru_cache
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,10 +40,17 @@ class Settings(BaseSettings):
     chroma_db_path: str = "./chroma_db"
     chroma_collection_name: str = "migration_docs"
 
-    # ── File storage ──────────────────────────────────────────────────
+    # ── Storage root (all file I/O lives here) ─────────────────────────
+    storage_root: str = "./storage"
+
+    # ── Legacy dirs (kept for backward compat) ─────────────────────────
     upload_dir: str = "./uploads"
     output_dir: str = "./outputs"
     max_upload_size_mb: int = 100
+
+    # ── Upload constraints ─────────────────────────────────────────────
+    max_file_size_mb: int = 20          # per-file limit
+    max_request_size_mb: int = 200      # total multipart request limit
 
     # ── Logging ───────────────────────────────────────────────────────
     log_dir: str = "./logs"
@@ -51,7 +60,40 @@ class Settings(BaseSettings):
     # ── CORS ──────────────────────────────────────────────────────────
     cors_origins: str = "http://localhost:3000"
 
-    # ── Computed helpers ──────────────────────────────────────────────
+    # ── Computed storage paths ─────────────────────────────────────────
+
+    @property
+    def storage_path(self) -> Path:
+        """Root storage directory as a Path."""
+        return Path(self.storage_root)
+
+    @property
+    def uploads_path(self) -> Path:
+        """storage/uploads — project source files."""
+        return self.storage_path / "uploads"
+
+    @property
+    def generated_path(self) -> Path:
+        """storage/generated — output Java files."""
+        return self.storage_path / "generated"
+
+    @property
+    def temp_path(self) -> Path:
+        """storage/temp — temporary working files."""
+        return self.storage_path / "temp"
+
+    @property
+    def max_file_size_bytes(self) -> int:
+        """Per-file size limit in bytes."""
+        return self.max_file_size_mb * 1024 * 1024
+
+    @property
+    def max_request_size_bytes(self) -> int:
+        """Total upload request size limit in bytes."""
+        return self.max_request_size_mb * 1024 * 1024
+
+    # ── Other computed helpers ─────────────────────────────────────────
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Split comma-separated CORS origins into a list."""

@@ -84,7 +84,10 @@ class ChromaService:
                 None,
                 lambda: chromadb.PersistentClient(
                     path=settings.chroma_db_path,
-                    settings=ChromaSettings(anonymized_telemetry=False),
+                    settings=ChromaSettings(
+                        anonymized_telemetry=False,
+                        allow_reset=True,
+                    ),
                 ),
             )
             self._collection = await self.create_collection(settings.chroma_collection_name)

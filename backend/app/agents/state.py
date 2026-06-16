@@ -125,7 +125,15 @@ class MigrationState(BaseModel):
     # ── Input files ───────────────────────────────────────────────────
     uploaded_files: list[str] = Field(
         default_factory=list,
-        description="Paths/names of uploaded .NET source files",
+        description="Relative paths of uploaded .NET source files",
+    )
+    project_root: str = Field(
+        default="",
+        description="Absolute path to storage/uploads/{migration_id}/",
+    )
+    last_upload_time: Optional[datetime] = Field(
+        default=None,
+        description="Timestamp of the most recent file upload",
     )
 
     # ── Parser output ─────────────────────────────────────────────────
@@ -245,6 +253,8 @@ class MigrationState(BaseModel):
             "is_failed": self.is_failed,
             "is_complete": self.is_complete,
             "file_count": len(self.uploaded_files),
+            "project_root": self.project_root,
+            "last_upload_time": self.last_upload_time.isoformat() if self.last_upload_time else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

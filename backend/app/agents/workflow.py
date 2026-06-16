@@ -63,15 +63,32 @@ def _now() -> datetime:
 
 
 async def _parser_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Parse uploaded .NET files into structured metadata (stub)."""
+    """Load file metadata from disk and create ParsedFile stubs."""
     ms: MigrationState = state["migration_state"]
     ms.add_log("[INFO] Parser started", LogLevel.INFO, agent="parser_agent")
 
     try:
         agent = agent_registry.get("parser_agent")
+
+        # ── Load real files from disk if project_root is set ──────────
+        from app.services.filesystem_service import FileSystemService
+        from app.utils.upload_validator import SOURCE_EXTENSIONS
+
+        fs = FileSystemService.get_instance()
+        disk_files: list[str] = []
+
+        if ms.project_root and ms.migration_id:
+            disk_files = await fs.list_files(
+                ms.migration_id, extensions=SOURCE_EXTENSIONS
+            )
+
+        # Use disk files if available, fall back to state.uploaded_files
+        source_files = disk_files or ms.uploaded_files
+
         agent_state = {
-            "source_code": "\n".join(ms.uploaded_files),
+            "source_code": "\n".join(source_files),
             "project_name": ms.project_name,
+            "file_paths": source_files,
         }
         result = await agent.safe_run(agent_state)
 
@@ -79,31 +96,35 @@ async def _parser_node(state: dict[str, Any]) -> dict[str, Any]:
             ms.mark_failed(f"Parser failed: {result.error}")
             return {"migration_state": ms}
 
-        # Mock parsed files — real implementation in Module 2
-        ms.parsed_files = [
-            ParsedFile(
-                filename=f,
-                path=f,
-                classes=["MockClass"],
-                methods=["mockMethod"],
-                lines=100,
-                parsed=True,
-            )
-            for f in ms.uploaded_files
-        ] or [
-            ParsedFile(
-                filename="SampleApp.cs",
-                path="SampleApp.cs",
-                classes=["Program", "UserService"],
-                methods=["Main", "GetUser", "CreateUser"],
-                lines=250,
-                parsed=True,
-            )
-        ]
+        # Build ParsedFile stubs from real file list (parsing in later modules)
+        if source_files:
+            ms.parsed_files = [
+                ParsedFile(
+                    filename=f,
+                    path=f,
+                    classes=[],
+                    methods=[],
+                    lines=0,
+                    parsed=False,      # real parsing in Module 3
+                )
+                for f in source_files
+            ]
+        else:
+            # No files uploaded yet — use a single placeholder
+            ms.parsed_files = [
+                ParsedFile(
+                    filename="SampleApp.cs",
+                    path="SampleApp.cs",
+                    classes=["Program", "UserService"],
+                    methods=["Main", "GetUser", "CreateUser"],
+                    lines=250,
+                    parsed=True,
+                )
+            ]
 
         ms.advance_stage(MigrationStage.PARSED)
         ms.add_log(
-            f"[SUCCESS] Parser completed — {len(ms.parsed_files)} file(s) parsed",
+            f"[SUCCESS] Parser completed — {len(ms.parsed_files)} file(s) loaded",
             LogLevel.SUCCESS,
             agent="parser_agent",
         )

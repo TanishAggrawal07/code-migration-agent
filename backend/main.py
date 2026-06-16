@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.api.ai_status import router as ai_status_router
 from app.api.migrations import router as migrations_router
+from app.api.upload import router as upload_router
 from app.api.error_handlers import register_exception_handlers
 from app.core.config import get_settings
 from app.core.logger import configure_logging, get_logger
@@ -55,6 +56,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.log_dir,
     ):
         os.makedirs(directory, exist_ok=True)
+
+    # Ensure new structured storage layout
+    from app.services.filesystem_service import FileSystemService
+    FileSystemService.get_instance().ensure_storage_dirs()
     logger.info("Storage directories verified")
 
     # Pre-build the workflow engine so the first request is not slow
@@ -105,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(ai_status_router)
     app.include_router(migrations_router)
+    app.include_router(upload_router)
 
     return app
 
