@@ -1,62 +1,81 @@
 """
-Code Migration Agent — FastAPI entry point.
+Code Migration Agent — FastAPI application entry point.
 
 Run locally:
     uvicorn main:app --reload --host 0.0.0.0 --port 8000
 """
 
-import logging
+from __future__ import annotations
+
+import os
 from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
+from app.api.ai_status import router as ai_status_router
 from app.core.config import get_settings
+from app.core.logger import configure_logging, get_logger
+from app.core.startup import initialize_services, shutdown_services
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+
+# ── Logging is configured before any other module writes a log line ────────
+_settings = get_settings()
+configure_logging(
+    level=_settings.log_level,
+    log_dir=_settings.log_dir,
+    max_bytes=_settings.log_max_bytes,
+    backup_count=_settings.log_backup_count,
+    is_production=_settings.is_production,
 )
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Lifespan (startup / shutdown hooks)
-# ---------------------------------------------------------------------------
+# ── Lifespan ───────────────────────────────────────────────────────────────
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # type: ignore[type-arg]
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """FastAPI lifespan — startup and shutdown hooks."""
     settings = get_settings()
-    logger.info("Starting %s v%s [%s]", settings.app_name, settings.app_version, settings.app_env)
+    logger.info(
+        "Starting %s v%s [%s]",
+        settings.app_name,
+        settings.app_version,
+        settings.app_env,
+    )
 
     # Ensure storage directories exist
-    import os
-
-    os.makedirs(settings.upload_dir, exist_ok=True)
-    os.makedirs(settings.output_dir, exist_ok=True)
-    os.makedirs(settings.chroma_db_path, exist_ok=True)
+    for directory in (
+        settings.upload_dir,
+        settings.output_dir,
+        settings.chroma_db_path,
+        settings.log_dir,
+    ):
+        os.makedirs(directory, exist_ok=True)
     logger.info("Storage directories verified")
 
-    yield
+    # Initialise AI services (each fails gracefully)
+    await initialize_services()
 
-    logger.info("Shutting down %s", settings.app_name)
+    yield  # ── application runs ──────────────────────────────────────────
+
+    await shutdown_services()
+    logger.info("Shutdown complete — goodbye")
 
 
-# ---------------------------------------------------------------------------
-# Application factory
-# ---------------------------------------------------------------------------
+# ── Application factory ────────────────────────────────────────────────────
+
 def create_app() -> FastAPI:
+    """Construct and configure the FastAPI application."""
     settings = get_settings()
 
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
         description=(
-            "AI-powered .NET to Java code migration agent using "
+            "AI-powered .NET → Java code migration agent using "
             "Gemini 2.5 Flash, RAG, LangGraph, ChromaDB, and MCP."
         ),
         docs_url="/docs",
@@ -64,9 +83,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ------------------------------------------------------------------
-    # CORS — allow frontend dev server
-    # ------------------------------------------------------------------
+    # ── CORS ───────────────────────────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -75,10 +92,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ------------------------------------------------------------------
-    # Routers
-    # ------------------------------------------------------------------
+    # ── Routers ────────────────────────────────────────────────────────
     app.include_router(health_router)
+    app.include_router(ai_status_router)
 
     return app
 
