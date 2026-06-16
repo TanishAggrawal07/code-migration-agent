@@ -16,12 +16,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
 from app.api.ai_status import router as ai_status_router
+from app.api.migrations import router as migrations_router
+from app.api.error_handlers import register_exception_handlers
 from app.core.config import get_settings
 from app.core.logger import configure_logging, get_logger
 from app.core.startup import initialize_services, shutdown_services
 
-
-# ── Logging is configured before any other module writes a log line ────────
+# ── Logging must be configured before any module emits log lines ──────────
 _settings = get_settings()
 configure_logging(
     level=_settings.log_level,
@@ -56,10 +57,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         os.makedirs(directory, exist_ok=True)
     logger.info("Storage directories verified")
 
+    # Pre-build the workflow engine so the first request is not slow
+    from app.agents.workflow import get_workflow_engine
+    get_workflow_engine()
+    logger.info("WorkflowEngine ready")
+
     # Initialise AI services (each fails gracefully)
     await initialize_services()
 
-    yield  # ── application runs ──────────────────────────────────────────
+    yield  # ── application serves requests ────────────────────────────
 
     await shutdown_services()
     logger.info("Shutdown complete — goodbye")
@@ -68,7 +74,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 # ── Application factory ────────────────────────────────────────────────────
 
 def create_app() -> FastAPI:
-    """Construct and configure the FastAPI application."""
+    """Construct and fully configure the FastAPI application."""
     settings = get_settings()
 
     app = FastAPI(
@@ -92,9 +98,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # ── Global exception handlers ──────────────────────────────────────
+    register_exception_handlers(app)
+
     # ── Routers ────────────────────────────────────────────────────────
     app.include_router(health_router)
     app.include_router(ai_status_router)
+    app.include_router(migrations_router)
 
     return app
 
