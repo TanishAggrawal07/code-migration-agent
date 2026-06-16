@@ -1,0 +1,63 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Code Migration Agent — Docker Compose skeleton
+# ---------------------------------------------------------------------------
+# Usage:
+#   docker compose up --build
+#
+# Services:
+#   backend   — FastAPI on :8000
+#   frontend  — Next.js on :3000 (dev server)
+# ---------------------------------------------------------------------------
+
+services:
+  # ── Backend ───────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cma-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CHROMA_DB_PATH=/app/chroma_db
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/outputs
+      - CORS_ORIGINS=http://localhost:3000
+      - APP_ENV=production
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_outputs:/app/outputs
+      - chroma_data:/app/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend ──────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cma-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Named volumes
+# ---------------------------------------------------------------------------
+volumes:
+  backend_uploads:
+  backend_outputs:
+  chroma_data:

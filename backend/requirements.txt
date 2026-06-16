@@ -1,0 +1,30 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+
+# LLM & AI orchestration
+langgraph==0.2.60
+google-generativeai==0.8.3
+langchain-core==0.3.28
+langchain-google-genai==2.0.8
+
+# Vector store & embeddings
+chromadb==0.5.23
+sentence-transformers==3.3.1
+
+# Code parsing
+tree-sitter==0.23.2
+
+# Data validation & config
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+
+# File handling
+python-multipart==0.0.20
+
+# Utilities
+httpx==0.28.1
+aiofiles==24.1.0
+tenacity==9.0.0
+structlog==24.4.0
