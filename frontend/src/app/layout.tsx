@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { QueryProvider } from "@/providers/query-provider";
+import { ToastContainer } from "@/components/toast-container";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,7 +24,16 @@ export const metadata: Metadata = {
   },
   description:
     "Migrate enterprise .NET codebases to Java using Gemini 2.5 Flash, RAG, LangGraph, ChromaDB, and MCP.",
-  keywords: ["code migration", ".NET", "Java", "AI", "LLM", "Gemini", "RAG", "LangGraph"],
+  keywords: [
+    "code migration",
+    ".NET",
+    "Java",
+    "AI",
+    "LLM",
+    "Gemini",
+    "RAG",
+    "LangGraph",
+  ],
   authors: [{ name: "Code Migration Agent" }],
   openGraph: {
     type: "website",
@@ -39,9 +50,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
       >
-        <ThemeProvider defaultTheme="dark" storageKey="cma-theme">
-          {children}
-        </ThemeProvider>
+        <QueryProvider>
+          <ThemeProvider defaultTheme="dark" storageKey="cma-theme">
+            {children}
+            <ToastContainer />
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   );

@@ -1,58 +1,92 @@
 "use client";
 
 import * as React from "react";
-import { Terminal, Trash2 } from "lucide-react";
+import { RefreshCw, Terminal, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import type { LogLevel } from "@/types/migration";
 
-type LogLevel = "INFO" | "SUCCESS" | "WARN" | "ERROR" | "DEBUG";
+// Keep LogEntry available for the props type
+import type { LogEntry } from "@/types/migration";
 
-interface LogEntry {
-  id: number;
-  level: LogLevel;
-  message: string;
-  timestamp: string;
-}
+// ── Styles ────────────────────────────────────────────────────────────────
 
 const LEVEL_STYLES: Record<LogLevel, string> = {
   INFO:    "text-blue-400",
   SUCCESS: "text-emerald-400",
-  WARN:    "text-yellow-400",
+  WARNING: "text-yellow-400",
   ERROR:   "text-red-400",
-  DEBUG:   "text-muted-foreground",
+  DEBUG:   "text-slate-500",
 };
 
-const INITIAL_LOGS: LogEntry[] = [
-  { id: 1,  level: "INFO",    message: "Code Migration Agent initialized",        timestamp: "09:00:00" },
-  { id: 2,  level: "INFO",    message: "Loading configuration from .env",         timestamp: "09:00:00" },
-  { id: 3,  level: "SUCCESS", message: "FastAPI backend connected",                timestamp: "09:00:01" },
-  { id: 4,  level: "INFO",    message: "ChromaDB vector store loaded",            timestamp: "09:00:01" },
-  { id: 5,  level: "SUCCESS", message: "Sentence transformer model ready",        timestamp: "09:00:02" },
-  { id: 6,  level: "INFO",    message: "LangGraph agent pipeline configured",     timestamp: "09:00:02" },
-  { id: 7,  level: "SUCCESS", message: "Gemini 2.5 Flash API reachable",          timestamp: "09:00:03" },
-  { id: 8,  level: "INFO",    message: "Tree-sitter parser loaded",               timestamp: "09:00:03" },
-  { id: 9,  level: "SUCCESS", message: "All systems ready — awaiting upload",     timestamp: "09:00:04" },
-  { id: 10, level: "INFO",    message: "Status: IDLE · Drop a .NET project to start", timestamp: "09:00:04" },
-];
+const LEVEL_WIDTH: Record<LogLevel, string> = {
+  INFO:    "w-[52px]",
+  SUCCESS: "w-[68px]",
+  WARNING: "w-[68px]",
+  ERROR:   "w-[52px]",
+  DEBUG:   "w-[52px]",
+};
 
-export function LogPanel() {
-  const [logs, setLogs] = React.useState<LogEntry[]>(INITIAL_LOGS);
+// ── Props ─────────────────────────────────────────────────────────────────
+
+interface LogPanelProps {
+  /** Real log entries from the backend. When null/undefined shows placeholder. */
+  logs?: LogEntry[] | null;
+  /** Called when the user clicks the refresh button */
+  onRefresh?: () => void;
+  /** Show a pulsing "live" indicator */
+  isLive?: boolean;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function formatTimestamp(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────
+
+export function LogPanel({ logs, onRefresh, isLive = false }: LogPanelProps) {
+  const [clearedAt, setClearedAt] = React.useState<number | null>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
+  // Display logs: real logs from props (filtered by clear), or empty
+  const displayLogs = React.useMemo(() => {
+    if (!logs || logs.length === 0) return [];
+    if (clearedAt === null) return logs;
+    // Show only entries added after the user cleared
+    return logs.filter(
+      (l) => new Date(l.timestamp).getTime() > clearedAt,
+    );
+  }, [logs, clearedAt]);
+
+  // Auto-scroll when new entries arrive
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
+  }, [displayLogs.length]);
 
-  const clearLogs = () => setLogs([]);
+  const clearLogs = () => setClearedAt(Date.now());
 
   const levelCounts = React.useMemo(
     () => ({
-      errors: logs.filter((l) => l.level === "ERROR").length,
-      warns:  logs.filter((l) => l.level === "WARN").length,
+      errors: displayLogs.filter(
+        (l) => l.level === "ERROR",
+      ).length,
+      warns: displayLogs.filter(
+        (l) => l.level === "WARNING",
+      ).length,
     }),
-    [logs],
+    [displayLogs],
   );
 
   return (
@@ -62,9 +96,21 @@ export function LogPanel() {
         <div className="flex items-center gap-2">
           <Terminal className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Live Logs</span>
-          <Badge variant="secondary" className="h-5 px-1.5 text-xs tabular-nums">
-            {logs.length}
+
+          {isLive && (
+            <span className="flex items-center gap-1 text-xs text-emerald-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live
+            </span>
+          )}
+
+          <Badge
+            variant="secondary"
+            className="h-5 px-1.5 text-xs tabular-nums"
+          >
+            {displayLogs.length}
           </Badge>
+
           {levelCounts.errors > 0 && (
             <Badge className="h-5 px-1.5 text-xs bg-red-500/15 text-red-500">
               {levelCounts.errors} err
@@ -76,45 +122,70 @@ export function LogPanel() {
             </Badge>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 rounded-md"
-          onClick={clearLogs}
-          aria-label="Clear logs"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+
+        <div className="flex items-center gap-1">
+          {onRefresh && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md"
+              onClick={onRefresh}
+              aria-label="Refresh logs"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-md"
+            onClick={clearLogs}
+            aria-label="Clear logs"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* Terminal body */}
-      <ScrollArea className="h-52">
+      <ScrollArea className="h-56">
         <div
-          className="log-terminal bg-[#0d1117] dark:bg-[#0a0d14] px-4 py-3 space-y-0.5 min-h-52"
+          className="log-terminal bg-[#0d1117] dark:bg-[#0a0d14] px-4 py-3 min-h-56"
           aria-live="polite"
           aria-label="Log output"
         >
-          {logs.length === 0 ? (
-            <p className="text-muted-foreground/50 text-xs">No logs yet.</p>
+          {displayLogs.length === 0 ? (
+            <p className="text-muted-foreground/40 text-xs">
+              No logs yet — run the migration workflow to see output.
+            </p>
           ) : (
-            logs.map((log) => (
-              <div key={log.id} className="flex items-start gap-2 group">
-                <span className="text-muted-foreground/40 select-none shrink-0">
-                  {log.timestamp}
-                </span>
-                <span
-                  className={cn(
-                    "shrink-0 font-semibold w-[52px]",
-                    LEVEL_STYLES[log.level],
-                  )}
-                >
-                  [{log.level}]
-                </span>
-                <span className="text-slate-300 dark:text-slate-300 break-all">
-                  {log.message}
-                </span>
-              </div>
-            ))
+            <div className="space-y-0.5">
+              {displayLogs.map((log, idx) => {
+                const level = log.level as LogLevel;
+                return (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-2 leading-relaxed"
+                  >
+                    <span className="text-slate-600 select-none shrink-0 tabular-nums text-[11px] pt-px">
+                      {formatTimestamp(log.timestamp)}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 font-semibold text-[11px] pt-px",
+                        LEVEL_STYLES[level] ?? "text-slate-400",
+                        LEVEL_WIDTH[level] ?? "w-[52px]",
+                      )}
+                    >
+                      [{level}]
+                    </span>
+                    <span className="text-slate-300 text-[11px] break-words min-w-0">
+                      {log.message}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           )}
           <div ref={bottomRef} />
         </div>
