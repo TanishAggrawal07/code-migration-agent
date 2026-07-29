@@ -1,12 +1,12 @@
-# Project Architecture Specification (`project_architecture.md`)
+# System Architecture
 
 ## Overview
 
-The **Code Migration Agent** is an enterprise-grade AI system designed for migrating legacy .NET (C#) applications into modern Java frameworks (Spring Boot 3, Quarkus). It uses a multi-tier, decoupled architecture consisting of a Next.js 16 web application, a FastAPI 0.115 asynchronous backend, a ChromaDB vector store, and a LangGraph Graph state machine.
+The **Code Migration Agent** is a multi-tier, provider-agnostic system engineered to translate legacy .NET (C#) applications into modern Java frameworks (Spring Boot 3, Quarkus). The system is built around a decoupled architecture comprising a Next.js 16 frontend, a FastAPI 0.115 asynchronous backend, a persistent ChromaDB vector store, and a LangGraph Graph state machine for agent orchestration.
 
 ---
 
-## 🏛️ High-Level Architectural Diagram
+## 🏗️ High-Level System Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -30,43 +30,86 @@ The **Code Migration Agent** is an enterprise-grade AI system designed for migra
 │              │                         └────────────────────────────┘  │
 │  ┌───────────▼──────────────────────────────────────────────────────┐  │
 │  │                  Provider-Agnostic LLM Layer                     │  │
-│  │  [Groq] ── [Gemini] ── [Ollama] ── [OpenRouter] ── [Grok] ── [OpenAI] │  │
+│  │  [Ollama] ── [Groq] ── [Gemini] ── [OpenRouter] ── [Grok] ── [OpenAI] │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🧩 Architectural Subsystems
+## 🧩 Architectural Components
 
-### 1. Web Frontend (`frontend/`)
+### 1. Frontend Subsystem (`frontend/`)
 - **Framework**: Next.js 16 using App Router and Turbopack compiler.
-- **Dynamic Client URL Resolution**: `getApiBaseUrl()` in `src/lib/api.ts` automatically inspects `window.location.hostname` in the browser to route requests to backend port `8000` regardless of deployment IP or domain.
-- **Key Modules**: Dashboard (`/dashboard`), Migrations (`/migrations`), History (`/history`), Settings (`/settings`), About (`/about`).
+- **Dynamic Server Resolution**: `getApiBaseUrl()` in `src/lib/api.ts` automatically inspects `window.location.hostname` in the browser to route requests to backend port `8000` regardless of deployment IP or domain.
+- **User Interface Pages**:
+  - Landing (`/`): Product overview and key feature highlights.
+  - Dashboard (`/dashboard`): Upload drag-and-drop area, migration configuration, progress progress bar, log console, code diff preview, and ZIP download button.
+  - Migrations List (`/migrations`): Active and completed migration job history.
+  - History (`/history`): Historical audit log of code migrations.
+  - Settings (`/settings`): AI provider selection and system status.
+  - About (`/about`): System architecture and documentation.
 
-### 2. FastAPI Backend Core (`backend/`)
-- **Framework**: FastAPI 0.115+ running on Uvicorn ASGI server.
-- **Configuration**: Pydantic v2 `BaseSettings` singleton (`get_settings()`) loaded from `.env`.
-- **Services**:
-  - `MigrationService`: State management & CRUD operations.
+### 2. Backend API Engine (`backend/`)
+- **Framework**: FastAPI 0.115+ running under Uvicorn ASGI server.
+- **Configuration**: Pydantic v2 `BaseSettings` singleton (`get_settings()`) loading variables from `.env`.
+- **API Services**:
+  - `MigrationService`: Business logic for migration job lifecycle and state management.
   - `FileSystemService`: Operations on `storage/uploads/`, `storage/generated/`, and `storage/temp/`.
 
-### 3. Provider-Agnostic LLM Layer (`backend/app/core/llm_providers.py`)
-- **Base Interface**: `BaseProvider` enforcing asynchronous `generate_text()`.
+### 3. AI Provider Abstraction Layer (`backend/app/core/llm_providers.py`)
+The system enforces strict provider independence through an abstract `BaseProvider` class.
+
+```
+                  ┌─────────────────┐
+                  │  BaseProvider   │
+                  └────────┬────────┘
+                           │
+    ┌─────────────┬────────┴────┬──────────────┬──────────────┬─────────────┐
+    │             │             │              │              │             │
+┌───▼────┐   ┌────▼───┐    ┌────▼───┐    ┌─────▼────┐   ┌─────▼────┐   ┌────▼───┐
+│ Ollama │   │  Groq  │    │ Gemini │    │OpenRouter│   │   Grok   │   │ OpenAI │
+└────────┘   └────────┘    └────────┘    └──────────┘   └──────────┘   └────────┘
+```
+
 - **Supported Providers**:
-  - `GroqProvider`: `llama-3.3-70b-versatile` (Active in production EC2).
-  - `GeminiProvider`: `gemini-2.5-flash`.
-  - `OllamaProvider`: Local execution (`qwen2.5-coder`, `deepseek-coder`).
-  - `OpenAICompatProvider`: Reusable wrapper powering **OpenRouter**, **Grok** (`x.ai`), and **OpenAI**.
-- **Failover Chain**: `FailoverProvider` automatically retries requests across available providers if the primary provider experiences a failure.
+  - `OllamaProvider`: Local LLM execution via `http://localhost:11434` (`qwen2.5-coder`, `deepseek-coder`, etc.).
+  - `GroqProvider`: High-throughput cloud LLM execution (`llama-3.3-70b-versatile`).
+  - `GeminiProvider`: Google AI Studio (`gemini-2.5-flash`, `gemini-1.5-pro`).
+  - `OpenAICompatProvider`: Reusable HTTP wrapper powering **OpenRouter**, **Grok** (`x.ai`), and **OpenAI**.
+- **Failover Chain**: `FailoverProvider` automatically wraps the selected provider. If an active provider fails during generation, the failover sequence (`Ollama → Groq → Gemini → OpenRouter → Grok → OpenAI`) automatically retries with the next available provider.
 
 ### 4. Vector Database & RAG Subsystem (`backend/app/vectorstore/`, `backend/app/rag/`)
-- **Embeddings**: `SentenceTransformer("all-MiniLM-L6-v2")` generating 384-dimensional dense vectors.
-- **ChromaDB**: Persistent SQLite collection `migration_docs` in `storage/chroma_db/`.
-- **RAG Retrieval**: Retrieves top-k semantically relevant context chunks during code generation.
+- **Embeddings Service**: `SentenceTransformer("all-MiniLM-L6-v2")` generating 384-dimensional dense vectors (uses CUDA GPU when present, falls back to CPU).
+- **ChromaDB Client**: Persistent vector collection `migration_docs` stored in `storage/chroma_db/`.
+- **RAG Retrieval**: Retrieves top-k semantically relevant code chunks and framework translation patterns to augment LLM prompts during code generation.
 
-### 5. Java Post-Processing Engine (`backend/app/utils/java_post_processor.py`)
-- **Class Merging**: Cleans markdown formatting and merges duplicate class declarations.
-- **Package Path Resolution**: Maps package statements to directory subpaths.
-- **Mock Generator**: Automatically generates stub interfaces for external packages (Lombok, SLF4J, Spring annotations).
-- **Compile Repair Loop**: Executes up to 3 LLM repair attempts when `javac` syntax errors are detected.
+### 5. LangGraph Orchestration Engine (`backend/app/agents/workflow.py`)
+A `StateGraph` state machine orchestrating 7 distinct execution nodes:
+1. `_parser_node`: Tree-sitter / Regex parsing into code chunks.
+2. `_analyzer_node`: AST structural code analysis and dependency extraction.
+3. `_embedding_node`: Chunk vectorization via SentenceTransformers.
+4. `_rag_node`: ChromaDB context retrieval.
+5. `_migration_node`: Adaptive LLM code generation (Full-file → Chunk fallback).
+6. `_compile_node`: Java post-processing, package-based file placement, and `javac` repair loop.
+7. `_save_node`: Disk persistence to `storage/generated/{id}/`.
+
+---
+
+## 🔒 Provider-Agnostic Guarantee
+
+Switching LLM providers requires **no code changes**. Updating environment settings in `.env` reconfigures the Provider Registry instantly:
+
+```env
+# Switch to Groq
+AI_PROVIDER=groq
+GROQ_API_KEY=gsk_your_key_here
+
+# Or switch to Gemini
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_key
+
+# Or switch to local Ollama
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+```

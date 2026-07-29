@@ -25,11 +25,11 @@ All technical documentation is organized within the [`docs/`](docs/) directory:
 
 | Document | Description |
 |---|---|
-| 📐 [Project Architecture](docs/project_architecture.md) | High-level system architecture, component design, and workflow nodes |
-| 🔄 [Agentic Workflow](docs/agentic_workflow.md) | 14-stage migration pipeline documentation |
-| 🛠️ [Technology Stack](docs/technology_stack.md) | Frameworks, AI engines, vector databases, parsers, and deployment tools |
+| 📐 [Architecture Specification](docs/ARCHITECTURE.md) | High-level system architecture, component design, and workflow nodes |
 | 🤖 [Provider Layer Specification](docs/PROVIDER_LAYER.md) | LLM provider abstraction layer, failover engine, and provider keys |
 | ⚙️ [Configuration Reference](docs/CONFIGURATION.md) | Every supported environment variable, storage limit, and AI parameter |
+| 🛠️ [Technology Stack](docs/TECHNOLOGY_STACK.md) | Frameworks, AI engines, vector databases, parsers, and deployment tools |
+| 🔄 [Migration Workflow](docs/WORKFLOW.md) | 14-stage migration pipeline documentation |
 | 🌐 [REST API Reference](docs/API.md) | Endpoint specifications, schemas, and status codes |
 | ☁️ [Deployment Guide](docs/DEPLOYMENT.md) | Production setup for AWS EC2, Docker Compose, and environment variables |
 | 💻 [Installation Guide](docs/INSTALLATION.md) | Step-by-step local development setup instructions |

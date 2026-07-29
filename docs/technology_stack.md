@@ -1,8 +1,8 @@
-# Technology Stack Specification (`technology_stack.md`)
+# Technology Stack Specification
 
 ## Overview
 
-The **Code Migration Agent** is built on a modern technology stack. This document details the technology choices across all layers of the application stack.
+The **Code Migration Agent** is a full-stack, enterprise-grade AI system engineered with a modern, decoupled architecture. This document details the technology choices across all layers of the application stack.
 
 ---
 
@@ -11,9 +11,9 @@ The **Code Migration Agent** is built on a modern technology stack. This documen
 | Layer / Concern | Technology | Purpose |
 |---|---|---|
 | **Framework** | Next.js 16 (App Router, React 19) | Server-side rendering, client routing, and standalone production build |
-| **Compiler** | Turbopack | Incremental compilation and fast HMR |
+| **Compiler** | Turbopack | Blazing fast incremental compilation and HMR |
 | **Language** | TypeScript 5.0+ | Strict type safety and interface definitions |
-| **Styling** | Vanilla CSS / TailwindCSS v4 | High-performance custom layout and glassmorphic UI elements |
+| **Styling** | Vanilla CSS / TailwindCSS v4 | High-performance custom layout and glassmorphism styling |
 | **HTTP Client** | Axios | REST API integration with dynamic host resolution (`getApiBaseUrl()`) |
 | **Icons** | Lucide React | Clean, responsive vector icons |
 | **State & Data Fetching** | TanStack Query v5 (React Query) | Server state management, live polling, and cache management |
@@ -63,7 +63,7 @@ The system features a **Provider-Agnostic LLM Layer** (`backend/app/core/llm_pro
 | Subsystem | Technology | Description |
 |---|---|---|
 | **AST Parser** | Tree-sitter 0.23+ | Native AST parser for C# grammar extracting classes, methods, and syntax trees |
-| **Fallback Parser** | Regex Syntax Engine | Fallback parser ensuring continuity if native C++ bindings are unavailable |
+| **Fallback Parser** | Regex Syntax Engine | Robust fallback parser ensuring parsing continuity if native C++ bindings are unavailable |
 | **Post-Processor** | Java Syntax Engine | Custom cleaner, package-path resolver, mock dependency generator, and `javac` repair loop |
 
 ---
