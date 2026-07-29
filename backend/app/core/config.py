@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     ollama_model_priority: str = "qwen2.5-coder,deepseek-coder,kimi-k2,gemma3,llama3"
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-4o-mini"
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
     grok_api_key: str = ""
     grok_model: str = "grok-2-1212"
     openai_api_key: str = ""

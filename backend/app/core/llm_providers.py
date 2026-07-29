@@ -294,6 +294,17 @@ class OpenAICompatProvider(BaseProvider):
             return LLMResult(text="", ok=False, error=str(e))
 
 
+class GroqProvider(OpenAICompatProvider):
+    def __init__(self, settings, api_key: str, default_model: str = "llama-3.3-70b-versatile"):
+        super().__init__(
+            settings=settings,
+            key="groq",
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+            default_model=default_model,
+        )
+
+
 class FailoverProvider(BaseProvider):
     def __init__(self, settings, primary: BaseProvider):
         super().__init__(settings)
@@ -345,7 +356,7 @@ class FailoverProvider(BaseProvider):
             failure_reason,
         )
 
-        fallback_order = ["ollama", "gemini", "openrouter", "grok", "openai"]
+        fallback_order = ["ollama", "groq", "gemini", "openrouter", "grok", "openai"]
         tried = {active.key}
         providers = get_providers(self.settings)
 
@@ -377,11 +388,17 @@ class FailoverProvider(BaseProvider):
 
 def get_providers(settings) -> Dict[str, BaseProvider]:
     openrouter_key = getattr(settings, "openrouter_api_key", "")
+    groq_key = getattr(settings, "groq_api_key", os.environ.get("GROQ_API_KEY", ""))
     grok_key = getattr(settings, "grok_api_key", "")
     openai_key = getattr(settings, "openai_api_key", "")
 
     return {
         "ollama": OllamaProvider(settings),
+        "groq": GroqProvider(
+            settings,
+            groq_key,
+            getattr(settings, "groq_model", "llama-3.3-70b-versatile"),
+        ),
         "gemini": GeminiProvider(settings),
         "openrouter": OpenAICompatProvider(
             settings,
@@ -493,7 +510,7 @@ def get_active_provider_instance(settings) -> Optional[BaseProvider]:
             selected = ollama
         else:
             logger.info("  [Ollama] Skipped — checking cloud providers …")
-            for k in ["gemini", "openrouter", "grok", "openai"]:
+            for k in ["groq", "gemini", "openrouter", "grok", "openai"]:
                 prov = providers[k]
                 if prov.available():
                     logger.info("  [%s] ✔ Available — selected.", k)
@@ -513,7 +530,7 @@ def get_active_provider_instance(settings) -> Optional[BaseProvider]:
             if _check_ollama_with_retry(ollama):
                 selected = ollama
             else:
-                for k in ["gemini", "openrouter", "grok", "openai"]:
+                for k in ["groq", "gemini", "openrouter", "grok", "openai"]:
                     prov = providers[k]
                     if prov.available():
                         selected = prov

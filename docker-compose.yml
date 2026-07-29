@@ -21,6 +21,9 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - AI_PROVIDER=${AI_PROVIDER:-groq}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - CHROMA_DB_PATH=/app/chroma_db
       - UPLOAD_DIR=/app/uploads
