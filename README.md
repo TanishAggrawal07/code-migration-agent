@@ -25,7 +25,9 @@ All technical documentation is organized within the [`docs/`](docs/) directory:
 
 | Document | Description |
 |---|---|
-| 📐 [Architecture Specification](docs/ARCHITECTURE.md) | High-level system architecture, module design, and provider abstraction |
+| 📐 [Architecture Specification](docs/ARCHITECTURE.md) | High-level system architecture, component design, and workflow nodes |
+| 🤖 [Provider Layer Specification](docs/PROVIDER_LAYER.md) | LLM provider abstraction layer, failover engine, and provider keys |
+| ⚙️ [Configuration Reference](docs/CONFIGURATION.md) | Every supported environment variable, storage limit, and AI parameter |
 | 🛠️ [Technology Stack](docs/TECHNOLOGY_STACK.md) | Frameworks, AI engines, vector databases, parsers, and deployment tools |
 | 🔄 [Migration Workflow](docs/WORKFLOW.md) | 14-stage migration pipeline documentation |
 | 🌐 [REST API Reference](docs/API.md) | Endpoint specifications, schemas, and status codes |
