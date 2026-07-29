@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.agents.state import LogLevel
@@ -205,10 +206,12 @@ async def list_project_files(migration_id: str) -> ListFilesResponse:
 @router.delete(
     "/{migration_id}/files",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
     summary="Delete all uploaded files",
     description="Remove all stored files for a migration (filesystem only, state is preserved).",
 )
-async def delete_project_files(migration_id: str) -> None:
+async def delete_project_files(migration_id: str) -> Response:
     """Delete the filesystem contents for *migration_id*."""
     try:
         await _svc().get_migration(migration_id)  # 404 guard
@@ -217,3 +220,4 @@ async def delete_project_files(migration_id: str) -> None:
 
     await _fs().delete_project(migration_id)
     logger.info("Files deleted — migration_id=%s", migration_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

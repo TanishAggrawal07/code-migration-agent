@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from app.agents.workflow import get_workflow_engine
@@ -246,14 +246,17 @@ async def get_pipeline_status(migration_id: str) -> dict[str, Any]:
 @router.delete(
     "/{migration_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
     summary="Delete migration",
 )
-async def delete_migration(migration_id: str) -> None:
+async def delete_migration(migration_id: str) -> Response:
     """Permanently remove a migration from the store."""
     deleted = await _svc().delete_migration(migration_id)
     if not deleted:
         raise _http_not_found(migration_id)
     logger.info("DELETE /api/migrations/%s", migration_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

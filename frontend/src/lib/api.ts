@@ -18,16 +18,35 @@ import type {
 
 // ── Axios instance ────────────────────────────────────────────────────────
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+function getApiBaseUrl(): string {
+  if (
+    process.env.NEXT_PUBLIC_API_URL &&
+    !process.env.NEXT_PUBLIC_API_URL.includes("localhost")
+  ) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:8000`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+}
 
 const httpClient: AxiosInstance = axios.create({
-  baseURL: BASE_URL,
+  baseURL: getApiBaseUrl(),
   timeout: 30_000,
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
   },
+});
+
+httpClient.interceptors.request.use((config) => {
+  if (typeof window !== "undefined") {
+    config.baseURL = getApiBaseUrl();
+  }
+  return config;
 });
 
 // ── Error normalisation ───────────────────────────────────────────────────
@@ -196,7 +215,7 @@ export async function getMigrationStatus(
  * file-save dialog natively (backend returns a ZIP with Content-Disposition).
  */
 export function downloadMigration(migrationId: string): void {
-  const url = `${BASE_URL}/api/migrations/${migrationId}/download`;
+  const url = `${getApiBaseUrl()}/api/migrations/${migrationId}/download`;
   const a = document.createElement("a");
   a.href = url;
   a.download = ""; // let Content-Disposition filename take precedence
