@@ -4,6 +4,7 @@ Tests for GeminiClient — no real API calls are made.
 
 import asyncio
 import pytest
+from unittest.mock import patch, AsyncMock
 
 from app.core.gemini_client import GeminiClient, GeminiClientError
 
@@ -39,12 +40,20 @@ def test_gemini_client_not_initialized_without_key() -> None:
 
 
 def test_gemini_generate_raises_when_not_initialized() -> None:
-    """generate_text must raise GeminiClientError when not initialized."""
+    """
+    generate_text must raise GeminiClientError when not initialized
+    and auto-initialization fails (no provider available).
+
+    We mock initialize() to return False so the auto-init path inside
+    generate_text concludes no provider is available, causing it to raise.
+    """
     client = GeminiClient.get_instance()
     client._initialized = False
+    client._provider = None
 
-    with pytest.raises(GeminiClientError):
-        run(client.generate_text("test prompt"))
+    with patch.object(client, "initialize", new=AsyncMock(return_value=False)):
+        with pytest.raises(GeminiClientError):
+            run(client.generate_text("test prompt"))
 
 
 def test_gemini_health_check_false_when_not_initialized() -> None:

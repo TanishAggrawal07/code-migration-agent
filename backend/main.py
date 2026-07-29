@@ -112,6 +112,38 @@ def create_app() -> FastAPI:
     app.include_router(migrations_router)
     app.include_router(upload_router)
 
+    # Custom OpenAPI schema modification to support File Upload picker in Swagger UI.
+    # Newer FastAPI versions use contentMediaType: application/octet-stream, which
+    # is not rendered as a file picker by Swagger UI. We convert it to format: binary.
+    from fastapi.openapi.utils import get_openapi
+    
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        
+        def fix_schema(d):
+            if isinstance(d, dict):
+                if d.get("contentMediaType") == "application/octet-stream":
+                    d.pop("contentMediaType", None)
+                    d["format"] = "binary"
+                for v in d.values():
+                    fix_schema(v)
+            elif isinstance(d, list):
+                for item in d:
+                    fix_schema(item)
+                    
+        fix_schema(openapi_schema)
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi
+
     return app
 
 

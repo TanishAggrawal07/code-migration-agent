@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import List
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -88,7 +88,7 @@ def _not_found(migration_id: str) -> HTTPException:
 )
 async def upload_files(
     migration_id: str,
-    files: Annotated[list[UploadFile], File(description="One or more .NET source files")],
+    files: List[UploadFile] = File(..., description="One or more .NET source files (.cs .csproj .sln .xml .json .zip)"),
 ) -> UploadResponse:
     """
     Accept multipart file uploads and persist them under

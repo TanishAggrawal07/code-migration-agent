@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: int = 60
     gemini_max_retries: int = 3
 
+    ai_provider: str = "auto"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = ""
+    ollama_model_priority: str = "qwen2.5-coder,deepseek-coder,kimi-k2,gemma3,llama3"
+    openrouter_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4o-mini"
+    grok_api_key: str = ""
+    grok_model: str = "grok-2-1212"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+
     # ── Embeddings ────────────────────────────────────────────────────
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_batch_size: int = 32

@@ -1,18 +1,19 @@
 """
-Gemini 2.5 Flash client — singleton with retry, timeout, and health-check.
+LLM Client facade — delegates to the active provider via the Provider Registry.
+
+Preserves the GeminiClient interface so no callers need to change.
 
 Usage:
     from app.core.gemini_client import GeminiClient
     client = GeminiClient.get_instance()
     await client.initialize()
-    text = await client.generate_text("Hello, Gemini!")
+    text = await client.generate_text("Hello!")
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from tenacity import (
     retry,
@@ -25,33 +26,22 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Lazy import so the server starts even if the package is absent
-try:
-    import google.generativeai as genai  # type: ignore[import]
-    _GENAI_AVAILABLE = True
-except ImportError:
-    genai = None  # type: ignore[assignment]
-    _GENAI_AVAILABLE = False
-    logger.warning("google-generativeai not installed — GeminiClient will be unavailable")
-
 
 class GeminiClientError(Exception):
-    """Raised when the Gemini client encounters an unrecoverable error."""
+    """Raised when the LLM client encounters an unrecoverable error."""
 
 
 class GeminiClient:
     """
-    Singleton wrapper around the google-generativeai SDK.
+    Singleton facade delegating to the active LLM provider
+    (Ollama, Gemini, OpenRouter, Grok, OpenAI, etc.) via the Provider Registry.
 
-    Provides:
-    - Lazy initialization with ``initialize()``
-    - Retry with exponential back-off via tenacity
-    - Configurable timeout (``gemini_timeout_seconds`` in Settings)
-    - Graceful degradation when the API key is absent
+    All callers continue to use GeminiClient.get_instance() and generate_text()
+    — no migration workflow changes required.
     """
 
     _instance: Optional["GeminiClient"] = None
-    _model: object = None           # genai.GenerativeModel
+    _provider: Any = None
     _initialized: bool = False
 
     # ── Singleton ─────────────────────────────────────────────────────
@@ -63,55 +53,64 @@ class GeminiClient:
 
     @classmethod
     def get_instance(cls) -> "GeminiClient":
-        """Return the application-wide GeminiClient singleton."""
+        """Return the application-wide client singleton."""
         return cls()
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 
     async def initialize(self) -> bool:
         """
-        Configure the Gemini SDK and create the generative model.
+        Detect and initialise the active LLM provider.
 
-        Returns:
-            ``True`` on success, ``False`` if the key is absent or the
-            package is not installed.
+        Priority: Ollama → Gemini → OpenRouter → Grok → OpenAI.
+        Returns True on success, False when no provider is available.
         """
         if self._initialized:
             return True
 
         settings = get_settings()
 
-        if not _GENAI_AVAILABLE:
-            logger.warning("Skipping Gemini init — google-generativeai not installed")
-            return False
-
-        if not settings.gemini_configured:
-            logger.warning(
-                "Skipping Gemini init — GEMINI_API_KEY not set in environment"
-            )
-            return False
-
         try:
-            genai.configure(api_key=settings.gemini_api_key)
-            self._model = genai.GenerativeModel(model_name=settings.gemini_model)
-            self._initialized = True
-            logger.info("GeminiClient initialized — model=%s", settings.gemini_model)
-            return True
+            from app.core.llm_providers import get_active_provider_instance
+            self._provider = get_active_provider_instance(settings)
+
+            if self._provider:
+                self._initialized = True
+                logger.info(
+                    "LLM Provider Facade initialized — provider=%s  model=%s",
+                    self._provider.key,
+                    self._provider.model,
+                )
+                return True
+            else:
+                logger.warning(
+                    "LLM Provider Facade init — no provider available "
+                    "(Ollama not running, no API keys configured)"
+                )
+                return False
+
         except Exception as exc:  # pylint: disable=broad-except
-            logger.error("GeminiClient initialization failed: %s", exc)
+            logger.error("LLM Provider Facade initialization failed: %s", exc)
             return False
+
+    def get_capabilities(self) -> Any:
+        """Return ProviderCapabilities of the active provider, or conservative default if uninitialized."""
+        if self._provider and hasattr(self._provider, "capabilities"):
+            return self._provider.capabilities
+        from app.core.llm_providers import ProviderCapabilities
+        return ProviderCapabilities()
 
     # ── Core generation ───────────────────────────────────────────────
 
     @retry(
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception_type(GeminiClientError),
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
+        wait=wait_exponential(multiplier=2, min=2, max=15),
         reraise=True,
     )
     async def generate_text(self, prompt: str) -> str:
         """
-        Generate text from a prompt using Gemini 2.5 Flash.
+        Generate text from a prompt using the active LLM provider.
 
         Args:
             prompt: The user prompt string.
@@ -120,43 +119,45 @@ class GeminiClient:
             The model's text response.
 
         Raises:
-            GeminiClientError: If the client is not initialized or generation fails.
+            GeminiClientError: If no provider is available or generation fails.
         """
+        # Auto-initialise on first call if needed
         if not self._initialized:
-            raise GeminiClientError(
-                "GeminiClient is not initialized. Call await client.initialize() first."
-            )
+            ok = await self.initialize()
+            if not ok:
+                raise GeminiClientError(
+                    "LLM provider is not initialised — no provider available."
+                )
 
-        if self._model is None:
-            raise GeminiClientError("Gemini model is not loaded.")
-
-        settings = get_settings()
+        if self._provider is None:
+            raise GeminiClientError("LLM provider is not loaded.")
 
         try:
-            loop = asyncio.get_event_loop()
-            response = await asyncio.wait_for(
-                loop.run_in_executor(None, self._model.generate_content, prompt),  # type: ignore[attr-defined]
-                timeout=settings.gemini_timeout_seconds,
-            )
-            text: str = response.text
-            logger.debug("Gemini generation complete — chars=%d", len(text))
-            return text
+            res = await self._provider.generate(prompt)
+            if res.ok:
+                logger.debug(
+                    "LLM generation complete — provider=%s chars=%d",
+                    self._provider.key,
+                    len(res.text),
+                )
+                return res.text
+            else:
+                raise GeminiClientError(f"LLM generation failed: {res.error}")
 
-        except asyncio.TimeoutError as exc:
-            logger.error("Gemini request timed out after %ds", settings.gemini_timeout_seconds)
-            raise GeminiClientError("Gemini request timed out") from exc
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Gemini generation error: %s", exc)
+        except GeminiClientError:
             raise
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("LLM generation error: %s", exc)
+            raise GeminiClientError(str(exc)) from exc
 
     # ── Health check ──────────────────────────────────────────────────
 
     async def health_check(self) -> bool:
         """
-        Verify that the Gemini API is reachable and responding.
+        Verify that the active LLM provider is reachable and responding.
 
         Returns:
-            ``True`` if the API responds successfully, ``False`` otherwise.
+            True if the provider responds, False otherwise.
         """
         if not self._initialized:
             return False
@@ -165,17 +166,33 @@ class GeminiClient:
             response = await self.generate_text("Reply with: OK")
             return bool(response and "OK" in response)
         except Exception as exc:  # pylint: disable=broad-except
-            logger.warning("Gemini health check failed: %s", exc)
+            logger.warning("LLM health check failed: %s", exc)
             return False
+
+    # ── Introspection ─────────────────────────────────────────────────
+
+    @property
+    def active_provider_key(self) -> str:
+        """Key of the currently active provider (e.g. 'ollama', 'gemini')."""
+        if self._provider:
+            return self._provider.key
+        return "none"
+
+    @property
+    def active_model(self) -> str:
+        """Model name of the currently active provider."""
+        if self._provider:
+            return self._provider.model
+        return "none"
 
     # ── Properties ────────────────────────────────────────────────────
 
     @property
     def is_initialized(self) -> bool:
-        """Whether the client has been successfully initialized."""
+        """Whether the client has been successfully initialised."""
         return self._initialized
 
     @property
     def is_available(self) -> bool:
-        """Whether the google-generativeai package is installed."""
-        return _GENAI_AVAILABLE
+        """Always True — the facade is always importable."""
+        return True

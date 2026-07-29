@@ -189,3 +189,56 @@ def test_delete_migration_removes_from_list() -> None:
 def test_delete_unknown_returns_404() -> None:
     resp = client.delete("/api/migrations/00000000-0000-0000-0000-000000000000")
     assert resp.status_code == 404
+
+
+# ── GET /api/migrations/{id}/download ──────────────────────────────────────
+
+def test_download_unknown_returns_404() -> None:
+    resp = client.get("/api/migrations/00000000-0000-0000-0000-000000000000/download")
+    assert resp.status_code == 404
+
+
+def test_download_empty_returns_400() -> None:
+    created = client.post("/api/migrations", json={"project_name": "NoGenTest"}).json()
+    mid = created["migration_id"]
+    resp = client.get(f"/api/migrations/{mid}/download")
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "NoOutputGenerated"
+
+
+def test_download_success() -> None:
+    import zipfile
+    import io
+    from app.services.filesystem_service import FileSystemService
+    import asyncio
+
+    def run(coro):
+        return asyncio.new_event_loop().run_until_complete(coro)
+
+    created = client.post("/api/migrations", json={"project_name": "DownloadTest"}).json()
+    mid = created["migration_id"]
+
+    # Manually write a generated java file into filesystem
+    fs = FileSystemService.get_instance()
+    # Ensure dirs are initialized
+    run(fs.create_project_dir(mid))
+    generated_dir = fs.get_generated_path(mid)
+    
+    # Save a fake Java class
+    java_file = generated_dir / "Sample.java"
+    java_file.write_text("public class Sample {}", encoding="utf-8")
+
+    try:
+        resp = client.get(f"/api/migrations/{mid}/download")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/zip"
+        
+        # Verify contents of zip
+        zip_data = io.BytesIO(resp.content)
+        with zipfile.ZipFile(zip_data) as zf:
+            namelist = zf.namelist()
+            assert "Sample.java" in namelist
+            assert zf.read("Sample.java") == b"public class Sample {}"
+    finally:
+        # Cleanup created folders
+        run(fs.delete_project(mid))

@@ -123,3 +123,68 @@ async def ai_services_detail() -> dict[str, Any]:
             "using_stub": ts.using_stub,
         },
     }
+
+
+@router.get(
+    "/provider",
+    summary="Active LLM provider",
+    description=(
+        "Returns the currently active LLM provider key, model name, "
+        "and the configured AI_PROVIDER setting."
+    ),
+)
+async def active_provider() -> dict[str, Any]:
+    """Return the active provider info from the Provider Registry."""
+    from app.core.gemini_client import GeminiClient
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    client = GeminiClient.get_instance()
+
+    if not client.is_initialized:
+        await client.initialize()
+
+    return {
+        "configured_provider": settings.ai_provider,
+        "active_provider": client.active_provider_key,
+        "active_model": client.active_model,
+        "initialized": client.is_initialized,
+    }
+
+
+@router.get(
+    "/providers",
+    summary="All LLM providers status",
+    description="Returns availability status for every configured LLM provider.",
+)
+async def all_providers() -> dict[str, Any]:
+    """Return availability of each provider in the registry."""
+    from app.core.config import get_settings
+    from app.core.llm_providers import get_providers
+
+    settings = get_settings()
+    providers = get_providers(settings)
+
+    result = []
+    for key, prov in providers.items():
+        entry: dict = {
+            "key": key,
+            "available": prov.available(),
+            "model": prov.model,
+        }
+        if key == "ollama":
+            entry["models"] = prov.detect_models()
+        elif key == "gemini":
+            entry["api_key_set"] = bool(settings.gemini_api_key)
+        elif key == "openrouter":
+            entry["api_key_set"] = bool(settings.openrouter_api_key)
+        elif key == "grok":
+            entry["api_key_set"] = bool(settings.grok_api_key)
+        elif key == "openai":
+            entry["api_key_set"] = bool(settings.openai_api_key)
+        result.append(entry)
+
+    return {
+        "providers": result,
+        "auto_selection_order": ["ollama", "gemini", "openrouter", "grok", "openai"],
+    }

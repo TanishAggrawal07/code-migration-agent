@@ -1,0 +1,37 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime data (don't bake into image)
+uploads/
+outputs/
+chroma_db/
+storage/
+logs/
+
+# Tests & dev files
+tests/
+e2e_*.py
+upload_test.py
+e2e_test_project/
+demo_extracts/
+
+# Env files
+.env
+.env.*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

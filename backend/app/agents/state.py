@@ -152,6 +152,15 @@ class MigrationState(BaseModel):
     embeddings_created: bool = False
     embedding_count: int = 0
 
+    # ── Analyzer output ───────────────────────────────────────────────
+    analysis: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Structural analysis produced by AnalyzerService — "
+            "classes, methods, imports, interfaces, dependencies, namespace"
+        ),
+    )
+
     # ── RAG output ────────────────────────────────────────────────────
     retrieved_context: list[str] = Field(
         default_factory=list,

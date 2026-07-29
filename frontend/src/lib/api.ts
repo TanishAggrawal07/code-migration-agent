@@ -120,7 +120,10 @@ export async function uploadFiles(
       `/api/migrations/${migrationId}/upload`,
       form,
       {
-        headers: { "Content-Type": "multipart/form-data" },
+        // DO NOT set Content-Type manually here.
+        // Axios auto-sets 'multipart/form-data; boundary=...' when it detects FormData.
+        // Setting it manually omits the boundary, causing the server to reject with 422.
+        headers: { "Content-Type": undefined },
         onUploadProgress: (evt) => {
           if (evt.total && onProgress) {
             onProgress(Math.round((evt.loaded / evt.total) * 100));
@@ -183,6 +186,23 @@ export async function getMigrationStatus(
   } catch (err) {
     handleAxiosError(err);
   }
+}
+
+// ── Download ──────────────────────────────────────────────────────────────
+
+/**
+ * Trigger a browser download of all generated Java files for a migration.
+ * Opens the backend download URL directly so the browser handles the
+ * file-save dialog natively (backend returns a ZIP with Content-Disposition).
+ */
+export function downloadMigration(migrationId: string): void {
+  const url = `${BASE_URL}/api/migrations/${migrationId}/download`;
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = ""; // let Content-Disposition filename take precedence
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 // ── Health ────────────────────────────────────────────────────────────────

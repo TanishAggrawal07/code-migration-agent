@@ -49,9 +49,10 @@ coverage.xml
 uploads/
 outputs/
 chroma_db/
+storage/
+demo_extracts/
 
 # ── Docker ────────────────────────────────────────────────────────────────
-.dockerignore
 
 # ── Editors & OS ──────────────────────────────────────────────────────────
 .idea/
@@ -72,3 +73,14 @@ yarn-error.log*
 *.bak
 *.tmp
 .turbo/
+
+# ── Deployment artifacts ───────────────────────────────────────────────────
+*.pem
+*.tar.gz
+*.zip
+sg-rules.json
+block-devices.json
+server.env
+bootstrap.sh
+deploy.sh
+cma-deploy*

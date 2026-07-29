@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  Download,
   FileCode2,
   FolderOpen,
   Gauge,
@@ -19,12 +20,40 @@ import { StatsCard, StatsCardSkeleton } from "@/components/stats-card";
 import { MigrationStatusPanel } from "@/components/migration-status";
 import {
   useCreateMigration,
+  useDownloadMigration,
   useMigration,
   useMigrationStatus,
   useRunMigration,
 } from "@/hooks/use-migration";
 import { ApiClientError } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
+
+// ── localStorage key ──────────────────────────────────────────────────────
+
+const LS_KEY = "migration_agent:active_migration_id";
+
+function readStoredId(): string | null {
+  try {
+    return typeof window !== "undefined"
+      ? window.localStorage.getItem(LS_KEY)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredId(id: string | null): void {
+  try {
+    if (typeof window === "undefined") return;
+    if (id) {
+      window.localStorage.setItem(LS_KEY, id);
+    } else {
+      window.localStorage.removeItem(LS_KEY);
+    }
+  } catch {
+    /* storage unavailable — silent fail */
+  }
+}
 
 // ── Create migration modal / inline form ──────────────────────────────────
 
@@ -86,25 +115,63 @@ function CreateMigrationForm({
 // ── Main dashboard ────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  // Active migration ID — stored in component state (localStorage in future)
-  const [activeMigrationId, setActiveMigrationId] = React.useState<
+  // ── Active migration ID ──────────────────────────────────────────────────
+  //
+  // HYDRATION SAFETY: Initialize to null on both server and client so the
+  // first render always matches. Then, in a useEffect (client-only), restore
+  // the stored ID from localStorage. This eliminates the SSR/client mismatch
+  // that causes React hydration warnings.
+  const [activeMigrationId, setActiveMigrationIdRaw] = React.useState<
     string | null
   >(null);
 
-  // Data queries
-  const { data: migration, isLoading: migrationLoading, refetch: refetchMigration } =
-    useMigration(activeMigrationId);
+  // After the component mounts on the client, restore any stored migration ID.
+  React.useEffect(() => {
+    const stored = readStoredId();
+    if (stored) {
+      setActiveMigrationIdRaw(stored);
+    }
+  }, []);
+
+  // Keep localStorage in sync with component state
+  const setActiveMigrationId = React.useCallback(
+    (id: string | null) => {
+      setActiveMigrationIdRaw(id);
+      writeStoredId(id);
+    },
+    [],
+  );
+
+  // ── Data queries (these automatically start polling when ID is present) ──
+  const {
+    data: migration,
+    isLoading: migrationLoading,
+    refetch: refetchMigration,
+    isError: migrationError,
+  } = useMigration(activeMigrationId);
 
   const {
     data: status,
     refetch: refetchStatus,
   } = useMigrationStatus(activeMigrationId);
 
-  // Run workflow mutation
+  // ── Download ─────────────────────────────────────────────────────────────
+  const { download, canDownload } = useDownloadMigration(activeMigrationId);
+
+  // ── Run workflow mutation ────────────────────────────────────────────────
   const { mutateAsync: runWorkflow, isPending: isRunning } =
     useRunMigration(activeMigrationId);
 
-  // ── Derived values ───────────────────────────────────────────────────
+  // If the stored ID no longer exists on the backend (e.g. backend restarted),
+  // clear it so the "Create migration" form shows up instead of an error loop.
+  React.useEffect(() => {
+    if (activeMigrationId && migrationError) {
+      writeStoredId(null);
+      setActiveMigrationIdRaw(null);
+    }
+  }, [activeMigrationId, migrationError]);
+
+  // ── Derived values ───────────────────────────────────────────────────────
 
   const isTerminal =
     migration?.current_stage === "saved" ||
@@ -164,7 +231,7 @@ export default function DashboardPage() {
     [migration, status, isRunning, isTerminal],
   );
 
-  // ── Handlers ─────────────────────────────────────────────────────────
+  // ── Handlers ─────────────────────────────────────────────────────────────
 
   async function handleRunWorkflow() {
     try {
@@ -189,7 +256,12 @@ export default function DashboardPage() {
     refetchStatus();
   }
 
-  // ── Render ────────────────────────────────────────────────────────────
+  function handleDownload() {
+    download();
+    toast.success("Download started", "Your Java project ZIP is downloading.");
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -240,6 +312,23 @@ export default function DashboardPage() {
             </code>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {/* Download button — shown only when migration is complete with output */}
+            {canDownload && (
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handleDownload}
+                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                aria-label="Download generated Java project"
+                id="download-migration-btn"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {(migration?.generated_java_files.length ?? 0) === 1
+                  ? "Download Java File"
+                  : "Download Generated Project"}
+              </Button>
+            )}
+
             {/* Run workflow button */}
             <Button
               size="sm"

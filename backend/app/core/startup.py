@@ -101,6 +101,23 @@ async def shutdown_services() -> None:
 async def _init_gemini(client: object) -> bool:
     try:
         result: bool = await client.initialize()  # type: ignore[attr-defined]
+        if result:
+            provider_key = getattr(client, "active_provider_key", "unknown")
+            model_name   = getattr(client, "active_model", "unknown")
+            logger.info(
+                "\n"
+                "  ┌─ LLM Provider Ready ─────────────────────────────────\n"
+                "  │  Provider selected : %s\n"
+                "  │  Model selected    : %s\n"
+                "  └──────────────────────────────────────────────────────",
+                provider_key,
+                model_name,
+            )
+        else:
+            logger.warning(
+                "LLM provider initialization failed — "
+                "no provider available (Ollama not running, no API keys configured)."
+            )
         return result
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Gemini init error: %s", exc)

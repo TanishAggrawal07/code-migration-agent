@@ -9,6 +9,7 @@ import {
 import {
   createMigration,
   deleteMigration,
+  downloadMigration,
   getMigration,
   getMigrationStatus,
   listMigrations,
@@ -20,6 +21,10 @@ import type {
   CreateMigrationRequest,
   MigrationStage,
 } from "@/types/migration";
+
+// ── Terminal stages (shared) ───────────────────────────────────────────────
+
+const TERMINAL_STAGES: MigrationStage[] = ["saved", "failed"];
 
 // ── List ──────────────────────────────────────────────────────────────────
 
@@ -37,12 +42,18 @@ export function useMigration(migrationId: string | null) {
     queryKey: queryKeys.migrations.detail(migrationId ?? ""),
     queryFn: () => getMigration(migrationId!),
     enabled: !!migrationId,
+    // Poll while migration is running so logs and generated files update live.
+    // Stops automatically when the stage reaches a terminal state.
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 3000;
+      if (TERMINAL_STAGES.includes(data.current_stage as MigrationStage)) return false;
+      return 3000;
+    },
   });
 }
 
 // ── Pipeline status — with live polling ───────────────────────────────────
-
-const TERMINAL_STAGES: MigrationStage[] = ["saved", "failed"];
 
 export function useMigrationStatus(
   migrationId: string | null,
@@ -137,4 +148,27 @@ export function useRunMigration(migrationId: string | null) {
       }
     },
   });
+}
+
+// ── Download ──────────────────────────────────────────────────────────────
+
+/**
+ * Returns a `download()` callback that triggers the browser file-save dialog
+ * for the generated Java output of a migration, plus a `canDownload` boolean
+ * that is true only when the migration is complete with generated files.
+ */
+export function useDownloadMigration(migrationId: string | null) {
+  const { data: migration } = useMigration(migrationId);
+
+  const canDownload =
+    !!migrationId &&
+    migration?.current_stage === "saved" &&
+    (migration?.generated_java_files.length ?? 0) > 0;
+
+  function download() {
+    if (!migrationId) return;
+    downloadMigration(migrationId);
+  }
+
+  return { download, canDownload };
 }

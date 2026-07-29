@@ -16,6 +16,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.agents.workflow import get_workflow_engine
@@ -25,6 +26,9 @@ from app.core.exceptions import (
     WorkflowException,
 )
 from app.services.migration_service import MigrationService
+from app.services.filesystem_service import FileSystemService
+import zipfile
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -250,3 +254,57 @@ async def delete_migration(migration_id: str) -> None:
     if not deleted:
         raise _http_not_found(migration_id)
     logger.info("DELETE /api/migrations/%s", migration_id)
+
+
+@router.get(
+    "/{migration_id}/download",
+    summary="Download migrated Java files",
+)
+async def download_migration(migration_id: str) -> FileResponse:
+    """
+    Package all generated Java files for *migration_id* into a ZIP file
+    and return it as a downloadable response.
+    """
+    # 1. Fetch migration (raises 404 if not found)
+    svc = _svc()
+    try:
+        state = await svc.get_migration(migration_id)
+    except MigrationNotFoundException:
+        raise _http_not_found(migration_id)
+
+    # 2. Get paths
+    fs = FileSystemService.get_instance()
+    generated_dir = fs.get_generated_path(migration_id)
+    temp_dir = fs.get_temp_path(migration_id)
+
+    # 3. Check if any java files were generated
+    if not generated_dir.exists() or not list(generated_dir.glob("**/*.java")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "NoOutputGenerated",
+                "message": "No Java output files have been generated/saved yet.",
+            },
+        )
+
+    # 4. Create ZIP
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = temp_dir / f"{state.project_name}_migrated.zip"
+
+    def _create_zip():
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file_path in generated_dir.rglob("*"):
+                if file_path.is_file():
+                    # Preserve relative path hierarchy
+                    rel_path = file_path.relative_to(generated_dir)
+                    zf.write(file_path, arcname=rel_path)
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _create_zip)
+
+    logger.info("Created download ZIP archive at %s for migration %s", zip_path, migration_id)
+    return FileResponse(
+        path=zip_path,
+        media_type="application/zip",
+        filename=f"{state.project_name}_migrated.zip",
+    )
